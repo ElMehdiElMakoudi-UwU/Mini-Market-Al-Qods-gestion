@@ -25,6 +25,7 @@ export const movementTypeEnum = pgEnum("movement_type", [
 ]);
 export const saleStatusEnum = pgEnum("sale_status", ["COMPLETED", "VOIDED"]);
 export const cashMovementTypeEnum = pgEnum("cash_movement_type", ["IN", "OUT"]);
+export const supplierEntryTypeEnum = pgEnum("supplier_entry_type", ["OPENING", "DELIVERY", "PAYMENT", "ADJUSTMENT"]);
 export const creditEntryTypeEnum = pgEnum("credit_entry_type", ["OPENING", "SALE", "PAYMENT", "ADJUSTMENT", "VOID"]);
 
 export const users = pgTable("users", {
@@ -209,6 +210,27 @@ export const creditEntries = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("credit_entries_customer_idx").on(t.customerId)],
+);
+
+// What the shop owes each supplier. Entries are never edited or deleted; the
+// balance is the sum of amounts (positive = the shop owes more).
+export const supplierEntries = pgTable(
+  "supplier_entries",
+  {
+    id: serial("id").primaryKey(),
+    supplierId: integer("supplier_id")
+      .notNull()
+      .references(() => suppliers.id),
+    type: supplierEntryTypeEnum("type").notNull(),
+    amount: integer("amount").notNull(),
+    deliveryId: integer("delivery_id").references(() => deliveries.id),
+    // Set when a payment was taken from the drawer: it lowers that register's expected cash.
+    cashSessionId: integer("cash_session_id").references(() => cashSessions.id),
+    note: text("note").notNull().default(""),
+    userId: integer("user_id").references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("supplier_entries_supplier_idx").on(t.supplierId)],
 );
 
 export const auditLogs = pgTable(

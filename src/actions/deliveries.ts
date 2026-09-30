@@ -4,32 +4,20 @@ import { revalidatePath } from "next/cache";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { deliveries, deliveryItems, products, suppliers } from "@/db/schema";
+import { deliveries, deliveryItems, products, supplierEntries } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { audit } from "@/lib/audit";
+import { getOpenCashSession } from "@/lib/cash";
 import { moveStock } from "@/lib/stock";
 import { roundQty } from "@/lib/format";
-
-type State = { error?: string; ok?: boolean } | undefined;
-
-export async function createSupplier(_prev: State, formData: FormData): Promise<State> {
-  const user = await requireUser();
-  const name = String(formData.get("name") ?? "").trim();
-  if (!name) return { error: "required" };
-  const [s] = await db
-    .insert(suppliers)
-    .values({ name, phone: String(formData.get("phone") ?? "").trim() })
-    .returning();
-  await audit(user.id, "supplier_create", { supplierId: s.id, name });
-  revalidatePath("/suppliers");
-  revalidatePath("/deliveries/new");
-  return { ok: true };
-}
 
 const deliveryInput = z.object({
   supplierId: z.number().int().nullable(),
   reference: z.string().max(200),
   note: z.string().max(1000),
+  // Paid to the supplier now; the rest becomes a debt. Only with a supplier.
+  paid: z.number().int().nonnegative().default(0),
+  fromCash: z.boolean().default(true),
   items: z
     .array(
       z.object({
@@ -45,8 +33,13 @@ export async function createDelivery(input: z.infer<typeof deliveryInput>): Prom
   const user = await requireUser();
   const parsed = deliveryInput.safeParse(input);
   if (!parsed.success) return { error: "emptyItems" };
-  const { supplierId, reference, note, items } = parsed.data;
+  const { supplierId, reference, note, items, fromCash } = parsed.data;
   const total = items.reduce((s, i) => s + Math.round(i.unitCost * i.quantity), 0);
+  const paid = supplierId ? parsed.data.paid : 0;
+  if (paid > total) return { error: "amount" };
+  if (paid > 0 && !fromCash && user.role !== "OWNER") return { error: "forbidden" };
+  const session = paid > 0 && fromCash ? await getOpenCashSession() : null;
+  if (paid > 0 && fromCash && !session) return { error: "closed" };
 
   const id = await db.transaction(async (tx) => {
     const [d] = await tx
@@ -67,11 +60,26 @@ export async function createDelivery(input: z.infer<typeof deliveryInput>): Prom
       // The latest purchase price becomes the product's cost, used for margins.
       if (i.unitCost > 0) await tx.update(products).set({ costPrice: i.unitCost }).where(eq(products.id, i.productId));
     }
-    await audit(user.id, "delivery_create", { deliveryId: d.id, supplierId, total, items: items.length }, tx);
+    if (supplierId) {
+      await tx.insert(supplierEntries).values({ supplierId, type: "DELIVERY", amount: total, deliveryId: d.id, userId: user.id });
+      if (paid > 0) {
+        await tx.insert(supplierEntries).values({
+          supplierId,
+          type: "PAYMENT",
+          amount: -paid,
+          deliveryId: d.id,
+          cashSessionId: session?.id ?? null,
+          userId: user.id,
+        });
+      }
+    }
+    await audit(user.id, "delivery_create", { deliveryId: d.id, supplierId, total, paid, fromCash, items: items.length }, tx);
     return d.id;
   });
 
   revalidatePath("/deliveries");
+  revalidatePath("/suppliers", "layout");
+  revalidatePath("/cash");
   revalidatePath("/products");
   return { id };
 }

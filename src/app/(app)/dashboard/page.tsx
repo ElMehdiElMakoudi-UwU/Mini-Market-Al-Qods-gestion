@@ -5,13 +5,14 @@ import { auditLogs, cashSessions, creditEntries, products, saleItems, sales, use
 import { requireUser } from "@/lib/auth";
 import { cashSummary, getOpenCashSession } from "@/lib/cash";
 import { customersWithBalance } from "@/lib/credit";
+import { suppliersWithBalance } from "@/lib/supplier-debt";
 import { getDict } from "@/i18n/server";
 import { formatDateTime, formatMoney, formatQty, formatTime, TIME_ZONE } from "@/lib/format";
 import { PageHeader } from "@/components/page-header";
 import { AutoRefresh } from "@/components/auto-refresh";
 import { describeAudit } from "@/lib/audit-describe";
 
-const ALERT_ACTIONS = ["sale_void", "price_change", "stock_adjust", "cash_close", "cash_movement", "credit_adjust"];
+const ALERT_ACTIONS = ["sale_void", "price_change", "stock_adjust", "cash_close", "cash_movement", "credit_adjust", "supplier_payment", "supplier_adjust"];
 
 export default async function DashboardPage() {
   await requireUser("OWNER");
@@ -87,6 +88,8 @@ export default async function DashboardPage() {
     .where(sql`(${creditEntries.createdAt} at time zone ${TIME_ZONE})::date = (now() at time zone ${TIME_ZONE})::date`);
   const debtors = (await customersWithBalance()).filter((c) => c.balance > 0).sort((a, b) => b.balance - a.balance);
   const totalOwed = debtors.reduce((s, c) => s + c.balance, 0);
+  const creditors = (await suppliersWithBalance()).filter((s) => s.balance > 0).sort((a, b) => b.balance - a.balance);
+  const owedToSuppliers = creditors.reduce((s, c) => s + c.balance, 0);
 
   const session = await getOpenCashSession();
   const cash = session ? await cashSummary(session.id, session.openingCash) : null;
@@ -127,6 +130,7 @@ export default async function DashboardPage() {
                 <Row label={t.cash.creditPayments} value={m(cash.creditPayments)} />
                 <Row label={t.cash.cashIn} value={m(cash.cashIn)} />
                 <Row label={t.cash.cashOut} value={m(cash.cashOut)} />
+                <Row label={t.cash.supplierPayments} value={m(cash.supplierPayments)} />
               </dl>
             </>
           ) : (
@@ -186,6 +190,28 @@ export default async function DashboardPage() {
                   <li key={c.id} className="flex justify-between py-2">
                     <Link href={`/customers/${c.id}`} className="hover:underline">{c.name}</Link>
                     <span className={`num font-semibold ${c.creditLimit > 0 && c.balance > c.creditLimit ? "text-red-600" : ""}`}>{m(c.balance)}</span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
+
+        <div className="card p-5">
+          <h2 className="mb-3 flex justify-between font-bold">
+            {t.dashboard.supplierDebts}
+            <Link href="/suppliers" className="text-sm font-medium text-brand-700 hover:underline">→</Link>
+          </h2>
+          <div className="text-sm text-muted">{t.dashboard.totalOwedSuppliers}</div>
+          <div className="num text-3xl font-bold text-red-600">{m(owedToSuppliers)}</div>
+          {creditors.length > 0 && (
+            <>
+              <h3 className="mt-4 mb-1 text-sm font-semibold">{t.dashboard.topCreditors}</h3>
+              <ul className="divide-y divide-line text-sm">
+                {creditors.slice(0, 5).map((s) => (
+                  <li key={s.id} className="flex justify-between py-2">
+                    <Link href={`/suppliers/${s.id}`} className="hover:underline">{s.name}</Link>
+                    <span className="num font-semibold">{m(s.balance)}</span>
                   </li>
                 ))}
               </ul>

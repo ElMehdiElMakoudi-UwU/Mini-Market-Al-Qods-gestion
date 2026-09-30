@@ -10,11 +10,11 @@ import { FormError } from "@/components/form-error";
 
 type P = { id: number; nameFr: string; nameAr: string; barcode: string | null; unit: "PIECE" | "KG"; costPrice: number };
 type Line = { productId: number; quantity: string; unitCost: string };
-type Draft = { supplierId: string; reference: string; note: string; lines: Line[] };
+type Draft = { supplierId: string; reference: string; note: string; lines: Line[]; paid: string; fromCash: boolean };
 
 // The draft survives a detour to create a missing product.
 const DRAFT_KEY = "delivery:draft";
-const emptyDraft: Draft = { supplierId: "", reference: "", note: "", lines: [] };
+const emptyDraft: Draft = { supplierId: "", reference: "", note: "", lines: [], paid: "", fromCash: true };
 
 function loadDraft(): Draft {
   try {
@@ -24,7 +24,17 @@ function loadDraft(): Draft {
   }
 }
 
-export function DeliveryForm({ products, suppliers }: { products: P[]; suppliers: { id: number; name: string }[] }) {
+export function DeliveryForm({
+  products,
+  suppliers,
+  isOwner,
+  cashOpen,
+}: {
+  products: P[];
+  suppliers: { id: number; name: string }[];
+  isOwner: boolean;
+  cashOpen: boolean;
+}) {
   const { t, locale } = useI18n();
   const router = useRouter();
   const [draft, setDraft] = useState<Draft>(emptyDraft);
@@ -92,6 +102,11 @@ export function DeliveryForm({ products, suppliers }: { products: P[]; suppliers
     setDraft((d) => ({ ...d, lines: d.lines.map((l, j) => (j === i ? { ...l, ...patch } : l)) }));
 
   const total = draft.lines.reduce((s, l) => s + Math.round((toCents(l.unitCost) || 0) * (parseFloat(l.quantity) || 0)), 0);
+  const hasSupplier = !!Number(draft.supplierId);
+  // Managers can only pay from the drawer.
+  const fromCash = draft.fromCash || !isOwner;
+  const paid = hasSupplier && draft.paid.trim() ? toCents(draft.paid) : 0;
+  const remaining = total - (Number.isFinite(paid) ? paid : 0);
 
   const submit = async () => {
     const items = draft.lines
@@ -101,11 +116,17 @@ export function DeliveryForm({ products, suppliers }: { products: P[]; suppliers
       setError(items.length === 0 ? "emptyItems" : "amount");
       return;
     }
+    if (!Number.isFinite(paid) || paid < 0 || paid > total) {
+      setError("amount");
+      return;
+    }
     setSaving(true);
     const res = await createDelivery({
       supplierId: Number(draft.supplierId) || null,
       reference: draft.reference,
       note: draft.note,
+      paid,
+      fromCash,
       items,
     });
     if (res.error || !res.id) {
@@ -236,6 +257,51 @@ export function DeliveryForm({ products, suppliers }: { products: P[]; suppliers
               </tbody>
             </table>
           </div>
+        )}
+      </div>
+
+      <div className="card space-y-3 p-5">
+        <h2 className="font-bold">{t.deliveries.payment}</h2>
+        {!hasSupplier ? (
+          <p className="text-sm text-muted">{t.deliveries.noSupplierPayment}</p>
+        ) : (
+          <>
+            <div className="flex flex-wrap items-end gap-2">
+              <div className="min-w-40 flex-1">
+                <label className="label">{t.deliveries.paidNow}</label>
+                <input
+                  className="num input text-lg"
+                  inputMode="decimal"
+                  placeholder="0.00"
+                  value={draft.paid}
+                  onChange={(e) => setDraft({ ...draft, paid: e.target.value.replace(/[^0-9.,]/g, "") })}
+                />
+              </div>
+              <button type="button" className="btn-secondary" onClick={() => setDraft({ ...draft, paid: centsToInput(total) })}>
+                {t.deliveries.payAll}
+              </button>
+              <button type="button" className="btn-secondary" onClick={() => setDraft({ ...draft, paid: "" })}>
+                {t.deliveries.payNone}
+              </button>
+            </div>
+            {isOwner && paid > 0 && (
+              <div className="grid grid-cols-2 gap-2">
+                <label className="flex items-center gap-2 rounded-lg border border-line p-2 text-sm has-checked:border-brand-500 has-checked:bg-brand-50">
+                  <input type="radio" checked={draft.fromCash} onChange={() => setDraft({ ...draft, fromCash: true })} />
+                  {t.deliveries.fromCash}
+                </label>
+                <label className="flex items-center gap-2 rounded-lg border border-line p-2 text-sm has-checked:border-brand-500 has-checked:bg-brand-50">
+                  <input type="radio" checked={!draft.fromCash} onChange={() => setDraft({ ...draft, fromCash: false })} />
+                  {t.deliveries.outsideCash}
+                </label>
+              </div>
+            )}
+            {paid > 0 && fromCash && !cashOpen && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">{t.errors.closed}</p>}
+            <div className={`flex items-baseline justify-between rounded-lg p-3 ${remaining > 0 ? "bg-amber-50" : "bg-brand-50"}`}>
+              <span className="font-medium">{t.deliveries.remaining}</span>
+              <span className={`num text-xl font-bold ${remaining < 0 ? "text-red-600" : ""}`}>{formatMoney(remaining, locale)}</span>
+            </div>
+          </>
         )}
       </div>
 

@@ -7,6 +7,7 @@ Point of sale, stock and cash management for **Mini Market Al Qods** (French / A
 - **Customer credit book / karné (`/customers`)**: customers, balances and full history. At the POS, pick a customer in the payment dialog and whatever isn't paid in cash goes on their karné (works offline too). Repayments go into the open cash register. Old paper balances can be entered when creating a customer. The owner sets credit limits and can correct balances.
 - **Products and stock**: products, categories, stock history, low-stock alerts, stock corrections (owner only).
 - **Deliveries**: record incoming goods by scanning; stock and purchase prices update automatically.
+- **Supplier debts (`/suppliers`)**: what you owe each supplier. When recording a delivery, enter what was paid now (from the drawer, or outside it for the owner); the rest becomes a debt. Pay suppliers later from their page; payments from the drawer count in the closing. Opening debts and corrections are owner only.
 - **Owner dashboard (`/dashboard`)**: sales, profit, cash in the drawer, low stock and alerts, viewable from a phone.
 - **Accountability**: owner and manager accounts. Only the owner can change prices, correct stock or cancel sales, and every sensitive action is recorded in the activity log.
 
