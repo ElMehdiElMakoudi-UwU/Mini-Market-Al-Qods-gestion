@@ -16,6 +16,7 @@ export function AppNav({ user, roleLabel }: { user: { name: string; role: "OWNER
 
   const items: Item[] = [
     { href: "/dashboard", label: t.nav.dashboard, ownerOnly: true },
+    { href: "/reports", label: t.nav.reports, ownerOnly: true },
     { href: "/pos", label: t.nav.pos },
     { href: "/cash", label: t.nav.cash },
     { href: "/customers", label: t.nav.customers },
