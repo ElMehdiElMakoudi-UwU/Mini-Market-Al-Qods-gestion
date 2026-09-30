@@ -1,7 +1,7 @@
 import "server-only";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { cashMovements, cashSessions, sales, users } from "@/db/schema";
+import { cashMovements, cashSessions, creditEntries, sales, users } from "@/db/schema";
 
 export async function getOpenCashSession() {
   const [row] = await db
@@ -14,11 +14,15 @@ export async function getOpenCashSession() {
   return row ? { ...row.session, openedByName: row.openedByName } : null;
 }
 
-/** Cash that should be in the drawer: opening + cash sales + money in − money out. */
+/**
+ * Cash that should be in the drawer: opening + cash part of sales + credit
+ * repayments + money in − money out.
+ */
 export async function cashSummary(sessionId: number, openingCash: number) {
   const [s] = await db
     .select({
-      total: sql<number>`coalesce(sum(${sales.total}), 0)::int`,
+      cash: sql<number>`coalesce(sum(${sales.total} - ${sales.creditAmount}), 0)::int`,
+      credit: sql<number>`coalesce(sum(${sales.creditAmount}), 0)::int`,
       count: sql<number>`count(*)::int`,
     })
     .from(sales)
@@ -30,11 +34,17 @@ export async function cashSummary(sessionId: number, openingCash: number) {
     })
     .from(cashMovements)
     .where(eq(cashMovements.cashSessionId, sessionId));
+  const [p] = await db
+    .select({ total: sql<number>`coalesce(-sum(${creditEntries.amount}), 0)::int` })
+    .from(creditEntries)
+    .where(and(eq(creditEntries.cashSessionId, sessionId), eq(creditEntries.type, "PAYMENT")));
   return {
-    salesTotal: s.total,
+    salesTotal: s.cash,
     salesCount: s.count,
+    creditSales: s.credit,
+    creditPayments: p.total,
     cashIn: m.cashIn,
     cashOut: m.cashOut,
-    expected: openingCash + s.total + m.cashIn - m.cashOut,
+    expected: openingCash + s.cash + p.total + m.cashIn - m.cashOut,
   };
 }

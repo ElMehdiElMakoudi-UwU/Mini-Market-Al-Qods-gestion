@@ -1,16 +1,17 @@
 import Link from "next/link";
 import { and, desc, eq, inArray, isNotNull, lte, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { auditLogs, cashSessions, products, saleItems, sales, users } from "@/db/schema";
+import { auditLogs, cashSessions, creditEntries, products, saleItems, sales, users } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { cashSummary, getOpenCashSession } from "@/lib/cash";
+import { customersWithBalance } from "@/lib/credit";
 import { getDict } from "@/i18n/server";
 import { formatDateTime, formatMoney, formatQty, formatTime, TIME_ZONE } from "@/lib/format";
 import { PageHeader } from "@/components/page-header";
 import { AutoRefresh } from "@/components/auto-refresh";
 import { describeAudit } from "@/lib/audit-describe";
 
-const ALERT_ACTIONS = ["sale_void", "price_change", "stock_adjust", "cash_close", "cash_movement"];
+const ALERT_ACTIONS = ["sale_void", "price_change", "stock_adjust", "cash_close", "cash_movement", "credit_adjust"];
 
 export default async function DashboardPage() {
   await requireUser("OWNER");
@@ -76,6 +77,17 @@ export default async function DashboardPage() {
     .orderBy(desc(auditLogs.createdAt))
     .limit(8);
 
+  const [creditToday] = await db
+    .select({
+      // Voided credit sales cancel out their original entry.
+      given: sql<number>`coalesce(sum(case when ${creditEntries.type} in ('SALE', 'VOID') then ${creditEntries.amount} end), 0)::int`,
+      repaid: sql<number>`coalesce(-sum(case when ${creditEntries.type} = 'PAYMENT' then ${creditEntries.amount} end), 0)::int`,
+    })
+    .from(creditEntries)
+    .where(sql`(${creditEntries.createdAt} at time zone ${TIME_ZONE})::date = (now() at time zone ${TIME_ZONE})::date`);
+  const debtors = (await customersWithBalance()).filter((c) => c.balance > 0).sort((a, b) => b.balance - a.balance);
+  const totalOwed = debtors.reduce((s, c) => s + c.balance, 0);
+
   const session = await getOpenCashSession();
   const cash = session ? await cashSummary(session.id, session.openingCash) : null;
   const lastSync = recentSales[0]?.s.syncedAt;
@@ -112,6 +124,7 @@ export default async function DashboardPage() {
               <dl className="mt-3 space-y-1 text-sm">
                 <Row label={t.cash.openingCash} value={m(session.openingCash)} />
                 <Row label={`${t.cash.salesCash} (${cash.salesCount})`} value={m(cash.salesTotal)} />
+                <Row label={t.cash.creditPayments} value={m(cash.creditPayments)} />
                 <Row label={t.cash.cashIn} value={m(cash.cashIn)} />
                 <Row label={t.cash.cashOut} value={m(cash.cashOut)} />
               </dl>
@@ -151,6 +164,32 @@ export default async function DashboardPage() {
                 </li>
               ))}
             </ul>
+          )}
+        </div>
+
+        <div className="card p-5">
+          <h2 className="mb-3 flex justify-between font-bold">
+            {t.dashboard.credit}
+            <Link href="/customers?debt=1" className="text-sm font-medium text-brand-700 hover:underline">→</Link>
+          </h2>
+          <div className="text-sm text-muted">{t.dashboard.totalOwed}</div>
+          <div className="num text-3xl font-bold text-red-600">{m(totalOwed)}</div>
+          <dl className="mt-3 space-y-1 text-sm">
+            <Row label={t.dashboard.todayCredit} value={m(creditToday.given)} />
+            <Row label={t.dashboard.todayPayments} value={m(creditToday.repaid)} />
+          </dl>
+          {debtors.length > 0 && (
+            <>
+              <h3 className="mt-4 mb-1 text-sm font-semibold">{t.dashboard.topDebtors}</h3>
+              <ul className="divide-y divide-line text-sm">
+                {debtors.slice(0, 5).map((c) => (
+                  <li key={c.id} className="flex justify-between py-2">
+                    <Link href={`/customers/${c.id}`} className="hover:underline">{c.name}</Link>
+                    <span className={`num font-semibold ${c.creditLimit > 0 && c.balance > c.creditLimit ? "text-red-600" : ""}`}>{m(c.balance)}</span>
+                  </li>
+                ))}
+              </ul>
+            </>
           )}
         </div>
 

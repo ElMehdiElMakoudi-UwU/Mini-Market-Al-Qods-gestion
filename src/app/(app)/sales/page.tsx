@@ -1,6 +1,7 @@
+import Link from "next/link";
 import { and, desc, eq, getTableColumns, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { products, saleItems, sales, users } from "@/db/schema";
+import { customers, products, saleItems, sales, users } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { getDict } from "@/i18n/server";
 import { formatDateTime, formatMoney, formatQty, TIME_ZONE } from "@/lib/format";
@@ -22,9 +23,10 @@ export default async function SalesPage({ searchParams }: PageProps<"/sales">) {
 
   const localDate = sql`(${sales.createdAt} at time zone ${TIME_ZONE})::date`;
   const rows = await db
-    .select({ s: sales, userName: users.name })
+    .select({ s: sales, userName: users.name, customerName: customers.name })
     .from(sales)
     .innerJoin(users, eq(users.id, sales.userId))
+    .leftJoin(customers, eq(customers.id, sales.customerId))
     .where(and(sql`${localDate} >= ${from}::date`, sql`${localDate} <= ${to}::date`))
     .orderBy(desc(sales.createdAt))
     .limit(500);
@@ -93,7 +95,7 @@ export default async function SalesPage({ searchParams }: PageProps<"/sales">) {
               </tr>
             </thead>
             <tbody>
-              {rows.map(({ s, userName }) => {
+              {rows.map(({ s, userName, customerName }) => {
                 const lines = itemsBySale.get(s.id) ?? [];
                 return (
                   <tr key={s.id} className={s.status === "VOIDED" ? "bg-red-50/50" : ""}>
@@ -113,7 +115,16 @@ export default async function SalesPage({ searchParams }: PageProps<"/sales">) {
                         </ul>
                       </details>
                     </td>
-                    <td className={`num font-semibold ${s.status === "VOIDED" ? "line-through" : ""}`}>{formatMoney(s.total, locale)}</td>
+                    <td>
+                      <span className={`num font-semibold ${s.status === "VOIDED" ? "line-through" : ""}`}>{formatMoney(s.total, locale)}</span>
+                      {s.creditAmount > 0 && (
+                        <div className="text-xs">
+                          <span className="badge bg-amber-100 text-amber-800">{t.sales.credit}</span>{" "}
+                          <Link href={`/customers/${s.customerId}`} className="text-brand-700 hover:underline">{customerName}</Link>{" "}
+                          <span className="num text-muted">{formatMoney(s.creditAmount, locale)}</span>
+                        </div>
+                      )}
+                    </td>
                     <td>{userName}</td>
                     <td>
                       {s.status === "VOIDED" ? (

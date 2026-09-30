@@ -12,6 +12,7 @@ import {
   syncSales,
   UnauthorizedError,
   type Bootstrap,
+  type PosCustomer,
   type PosProduct,
 } from "@/lib/pos-store";
 import { Modal, NumpadModal } from "@/components/numpad-modal";
@@ -27,6 +28,7 @@ type Receipt = {
   total: number;
   paid: number;
   change: number;
+  customer?: { name: string; credit: number; balanceAfter: number };
 };
 
 const SYNC_INTERVAL_MS = 10_000;
@@ -212,13 +214,15 @@ export function PosApp() {
     setTimeout(() => window.print(), 50);
   };
 
-  const completeSale = async (paid: number) => {
+  const completeSale = async (paid: number, customer: PosCustomer | null) => {
     if (!data?.cashSession || cart.length === 0) return;
+    const credit = customer ? Math.max(total - paid, 0) : 0;
     const sale = {
       id: crypto.randomUUID(),
       cashSessionId: data.cashSession.id,
       createdAt: new Date().toISOString(),
       paid,
+      customerId: customer?.id ?? null,
       items: cart.map((l) => ({ productId: l.product.id, quantity: l.quantity, unitPrice: l.product.salePrice })),
     };
     await enqueueSale(sale);
@@ -234,9 +238,10 @@ export function PosApp() {
       })),
       total,
       paid,
-      change: paid - total,
+      change: Math.max(paid - total, 0),
+      customer: customer ? { name: customer.name, credit, balanceAfter: customer.balance + credit } : undefined,
     };
-    // Update displayed stock locally until the next catalog refresh.
+    // Update displayed stock and credit balance locally until the next catalog refresh.
     setData((d) =>
       d && {
         ...d,
@@ -244,6 +249,7 @@ export function PosApp() {
           const l = cart.find((x) => x.product.id === p.id);
           return l ? { ...p, stock: roundQty(p.stock - l.quantity) } : p;
         }),
+        customers: d.customers?.map((c) => (c.id === customer?.id ? { ...c, balance: c.balance + credit } : c)),
       },
     );
     setCart([]);
@@ -407,6 +413,9 @@ export function PosApp() {
                   {receipt.change > 0 && (
                     <> · {t.pos.change}: <span className="num font-bold">{formatMoney(receipt.change, locale)}</span></>
                   )}
+                  {receipt.customer && receipt.customer.credit > 0 && (
+                    <> · {receipt.customer.name}: <span className="num font-bold text-amber-700">+{formatMoney(receipt.customer.credit, locale)}</span></>
+                  )}
                 </span>
                 <button className="btn-secondary px-3 py-1" onClick={() => print(receipt)}>{t.common.print}</button>
               </div>
@@ -464,6 +473,8 @@ export function PosApp() {
       {paying && (
         <PaymentModal
           total={total}
+          customers={data.customers ?? []}
+          canExceedLimit={data.user.role === "OWNER"}
           onClose={() => {
             setPaying(false);
             focusSearch();
@@ -530,58 +541,188 @@ function WeightModal({
   );
 }
 
-function PaymentModal({ total, onConfirm, onClose }: { total: number; onConfirm: (paid: number) => void; onClose: () => void }) {
+function PaymentModal({
+  total,
+  customers,
+  canExceedLimit,
+  onConfirm,
+  onClose,
+}: {
+  total: number;
+  customers: PosCustomer[];
+  canExceedLimit: boolean;
+  onConfirm: (paid: number, customer: PosCustomer | null) => void;
+  onClose: () => void;
+}) {
   const { t, locale } = useI18n();
   const [received, setReceived] = useState("");
   const [busy, setBusy] = useState(false);
+  const [customer, setCustomer] = useState<PosCustomer | null>(null);
+  const [picking, setPicking] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const paid = received.trim() === "" ? total : toCents(received);
+  // With a customer, an empty field means nothing is paid now: all goes on the karné.
+  const paid = received.trim() === "" ? (customer ? 0 : total) : toCents(received);
   const change = paid - total;
-  const valid = Number.isFinite(paid) && paid >= total;
+  const credit = customer ? Math.max(total - paid, 0) : 0;
+  const newBalance = customer ? customer.balance + credit : 0;
+  const overLimit = !!customer && customer.creditLimit > 0 && credit > 0 && newBalance > customer.creditLimit;
+  const valid = Number.isFinite(paid) && paid >= 0 && (customer ? !overLimit || canExceedLimit : paid >= total);
   const bills = [1000, 2000, 5000, 10000, 20000].filter((b) => b > total).slice(0, 3);
 
-  useEffect(() => inputRef.current?.focus(), []);
+  useEffect(() => {
+    if (!picking) inputRef.current?.focus();
+  }, [picking, customer]);
 
   const submit = async (amount = paid) => {
-    if (busy || !Number.isFinite(amount) || amount < total) return;
+    if (busy || !valid || !Number.isFinite(amount) || amount < 0 || (!customer && amount < total)) return;
     setBusy(true);
-    await onConfirm(amount);
+    await onConfirm(amount, customer);
   };
+
+  if (picking) {
+    return (
+      <Modal onClose={() => setPicking(false)}>
+        <CustomerPicker
+          customers={customers}
+          onPick={(c) => {
+            setCustomer(c);
+            setReceived("");
+            setPicking(false);
+          }}
+          onCancel={() => setPicking(false)}
+        />
+      </Modal>
+    );
+  }
 
   return (
     <Modal onClose={onClose}>
       <h2 className="mb-4 text-lg font-bold">{t.pos.payment}</h2>
-      <div className="mb-4 flex items-baseline justify-between rounded-lg bg-surface p-3">
+      <div className="mb-3 flex items-baseline justify-between rounded-lg bg-surface p-3">
         <span className="text-muted">{t.pos.toPay}</span>
         <span className="num text-3xl font-bold">{formatMoney(total, locale)}</span>
       </div>
-      <label className="label">{t.pos.received}</label>
+
+      {customer ? (
+        <div className="mb-3 flex items-center justify-between gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm">
+          <div>
+            <div className="font-semibold">{customer.name}</div>
+            <div className="text-muted">
+              {t.pos.currentBalance}: <span className="num">{formatMoney(customer.balance, locale)}</span>
+              {customer.creditLimit > 0 && (
+                <> · {t.pos.limit}: <span className="num">{formatMoney(customer.creditLimit, locale)}</span></>
+              )}
+            </div>
+          </div>
+          <button className="btn-secondary px-3 py-1" onClick={() => setCustomer(null)}>{t.pos.removeCustomer}</button>
+        </div>
+      ) : (
+        <button className="btn-secondary mb-3 w-full py-3" onClick={() => setPicking(true)}>
+          👤 {t.pos.credit}
+        </button>
+      )}
+
+      <label className="label">{customer ? t.pos.cashPart : t.pos.received}</label>
       <input
         ref={inputRef}
         value={received}
         inputMode="decimal"
-        placeholder={(total / 100).toFixed(2)}
+        placeholder={customer ? "0.00" : (total / 100).toFixed(2)}
         onChange={(e) => setReceived(e.target.value.replace(/[^0-9.,]/g, ""))}
         onKeyDown={(e) => e.key === "Enter" && submit()}
         className="num input py-3 text-end text-2xl font-bold"
       />
-      <div className="mt-2 grid grid-cols-4 gap-2">
-        <button className="btn-secondary px-2" onClick={() => submit(total)}>{t.pos.exact}</button>
-        {bills.map((b) => (
-          <button key={b} className="num btn-secondary px-2" onClick={() => submit(b)}>
-            {b / 100}
-          </button>
-        ))}
-      </div>
-      <div className={`mt-4 flex items-baseline justify-between rounded-lg p-3 ${valid ? "bg-brand-50" : "bg-red-50"}`}>
-        <span className="font-medium">{valid ? t.pos.change : t.pos.insufficient}</span>
-        <span className="num text-3xl font-bold">{valid ? formatMoney(change, locale) : ""}</span>
-      </div>
+      {!customer && (
+        <div className="mt-2 grid grid-cols-4 gap-2">
+          <button className="btn-secondary px-2" onClick={() => submit(total)}>{t.pos.exact}</button>
+          {bills.map((b) => (
+            <button key={b} className="num btn-secondary px-2" onClick={() => submit(b)}>
+              {b / 100}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {customer ? (
+        <div className={`mt-4 space-y-1 rounded-lg p-3 ${overLimit ? "bg-red-50" : "bg-amber-50"}`}>
+          <div className="flex items-baseline justify-between">
+            <span className="font-medium">{t.pos.onCredit}</span>
+            <span className="num text-3xl font-bold">{formatMoney(credit, locale)}</span>
+          </div>
+          <div className="flex justify-between text-sm">
+            <span className="text-muted">{t.pos.newBalance}</span>
+            <span className="num font-semibold">{formatMoney(newBalance, locale)}</span>
+          </div>
+          {change > 0 && (
+            <div className="flex justify-between text-sm">
+              <span className="text-muted">{t.pos.change}</span>
+              <span className="num font-semibold">{formatMoney(change, locale)}</span>
+            </div>
+          )}
+          {overLimit && <p className="text-sm font-semibold text-red-700">{t.pos.overLimit}</p>}
+        </div>
+      ) : (
+        <div className={`mt-4 flex items-baseline justify-between rounded-lg p-3 ${valid ? "bg-brand-50" : "bg-red-50"}`}>
+          <span className="font-medium">{valid ? t.pos.change : t.pos.insufficient}</span>
+          <span className="num text-3xl font-bold">{valid ? formatMoney(change, locale) : ""}</span>
+        </div>
+      )}
       <div className="mt-4 grid grid-cols-2 gap-2">
         <button className="btn-secondary py-3" onClick={onClose}>{t.common.cancel}</button>
         <button className="btn-primary py-3" disabled={!valid || busy} onClick={() => submit()}>{t.pos.validate}</button>
       </div>
     </Modal>
+  );
+}
+
+function CustomerPicker({
+  customers,
+  onPick,
+  onCancel,
+}: {
+  customers: PosCustomer[];
+  onPick: (c: PosCustomer) => void;
+  onCancel: () => void;
+}) {
+  const { t, locale } = useI18n();
+  const [query, setQuery] = useState("");
+  const q = normalize(query.trim());
+  const matches = customers
+    .filter((c) => !q || normalize(c.name).includes(q) || c.phone.replace(/\s/g, "").includes(q.replace(/\s/g, "")))
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .slice(0, 30);
+  return (
+    <>
+      <h2 className="mb-3 text-lg font-bold">{t.pos.chooseCustomer}</h2>
+      <input
+        autoFocus
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        onKeyDown={(e) => e.key === "Enter" && matches.length === 1 && onPick(matches[0])}
+        placeholder={t.pos.searchCustomer}
+        className="input py-3 text-base"
+      />
+      <ul className="mt-2 max-h-80 divide-y divide-line overflow-y-auto">
+        {matches.length === 0 ? (
+          <li className="p-3 text-sm text-muted">{t.pos.noCustomer}</li>
+        ) : (
+          matches.map((c) => (
+            <li key={c.id}>
+              <button className="flex w-full items-center justify-between gap-2 p-3 text-start hover:bg-surface" onClick={() => onPick(c)}>
+                <span>
+                  <span className="font-semibold">{c.name}</span>
+                  {c.phone && <span className="num ms-2 text-xs text-muted">{c.phone}</span>}
+                </span>
+                <span className={`num text-sm font-semibold ${c.balance > 0 ? "text-red-600" : "text-muted"}`}>
+                  {formatMoney(c.balance, locale)}
+                </span>
+              </button>
+            </li>
+          ))
+        )}
+      </ul>
+      <button className="btn-secondary mt-3 w-full py-3" onClick={onCancel}>{t.common.back}</button>
+    </>
   );
 }
 
@@ -620,6 +761,22 @@ function ReceiptView({ receipt }: { receipt: Receipt }) {
         <span>{t.pos.change}</span>
         <span className="num">{formatMoney(receipt.change, locale)}</span>
       </div>
+      {receipt.customer && receipt.customer.credit > 0 && (
+        <>
+          <div style={{ borderTop: "1px dashed #000", margin: "4px 0" }} />
+          <div>
+            {t.pos.customer}: {receipt.customer.name}
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700 }}>
+            <span>{t.pos.onCredit}</span>
+            <span className="num">{formatMoney(receipt.customer.credit, locale)}</span>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between" }}>
+            <span>{t.pos.newBalance}</span>
+            <span className="num">{formatMoney(receipt.customer.balanceAfter, locale)}</span>
+          </div>
+        </>
+      )}
       <div style={{ textAlign: "center", marginTop: 8 }}>{t.pos.thanks}</div>
     </div>
   );

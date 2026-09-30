@@ -4,6 +4,7 @@ Point of sale, stock and cash management for **Mini Market Al Qods** (French / A
 
 - **POS (`/pos`)**: barcode scanning, quick keys, products sold by weight, cash payment with change, 80 mm receipts. Works **offline**: sales are saved on the POS and sent to the server when the connection returns.
 - **Cash register (`/cash`)**: opening float, money in/out with a reason, closing count with the difference.
+- **Customer credit book / karné (`/customers`)**: customers, balances and full history. At the POS, pick a customer in the payment dialog and whatever isn't paid in cash goes on their karné (works offline too). Repayments go into the open cash register. Old paper balances can be entered when creating a customer. The owner sets credit limits and can correct balances.
 - **Products and stock**: products, categories, stock history, low-stock alerts, stock corrections (owner only).
 - **Deliveries**: record incoming goods by scanning; stock and purchase prices update automatically.
 - **Owner dashboard (`/dashboard`)**: sales, profit, cash in the drawer, low stock and alerts, viewable from a phone.

@@ -18,12 +18,16 @@ export type PosProduct = {
   quickKey: boolean;
 };
 
+export type PosCustomer = { id: number; name: string; phone: string; balance: number; creditLimit: number };
+
 export type PosCategory = { id: number; nameFr: string; nameAr: string };
 
 export type Bootstrap = {
   user: { id: number; name: string; role: "OWNER" | "MANAGER" };
   products: PosProduct[];
   categories: PosCategory[];
+  // Missing in catalogs cached before the credit book existed.
+  customers?: PosCustomer[];
   cashSession: { id: number; openedAt: string; openedByName: string } | null;
   fetchedAt: string;
 };
@@ -33,6 +37,7 @@ export type QueuedSale = {
   cashSessionId: number;
   createdAt: string;
   paid: number;
+  customerId?: number | null;
   items: { productId: number; quantity: number; unitPrice: number }[];
 };
 

@@ -56,10 +56,16 @@ export default async function CashPage() {
             <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
               <Stat label={t.cash.openingCash} value={m(session.openingCash)} />
               <Stat label={`${t.cash.salesCash} (${summary.salesCount})`} value={m(summary.salesTotal)} />
+              <Stat label={t.cash.creditPayments} value={m(summary.creditPayments)} />
               <Stat label={t.cash.cashIn} value={m(summary.cashIn)} />
               <Stat label={t.cash.cashOut} value={m(summary.cashOut)} />
               <Stat label={t.cash.expected} value={m(summary.expected)} strong />
             </dl>
+            {summary.creditSales > 0 && (
+              <p className="mt-3 text-sm text-muted">
+                {t.cash.creditSales}: <span className="num font-semibold text-ink">{m(summary.creditSales)}</span>
+              </p>
+            )}
           </div>
 
           <div className="grid gap-6 md:grid-cols-2">

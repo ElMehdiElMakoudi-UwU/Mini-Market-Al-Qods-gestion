@@ -2,7 +2,7 @@ import "server-only";
 import { z } from "zod";
 import { desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
-import { cashSessions, products, saleItems, sales } from "@/db/schema";
+import { cashSessions, creditEntries, customers, products, saleItems, sales } from "@/db/schema";
 import { moveStock } from "./stock";
 import { roundQty } from "./format";
 
@@ -11,6 +11,8 @@ export const saleInput = z.object({
   cashSessionId: z.number().int(),
   createdAt: z.string(),
   paid: z.number().int().nonnegative(),
+  // When set, whatever is not paid in cash goes on this customer's credit.
+  customerId: z.number().int().nullish(),
   items: z
     .array(
       z.object({
@@ -58,6 +60,15 @@ export async function recordSale(input: SaleInput, userId: number): Promise<numb
     });
     const total = lines.reduce((s, l) => s + l.lineTotal, 0);
     const createdAt = new Date(input.createdAt);
+    const saleDate = isNaN(createdAt.getTime()) ? new Date() : createdAt;
+
+    let customerId: number | null = null;
+    if (input.customerId) {
+      const [c] = await tx.select({ id: customers.id }).from(customers).where(eq(customers.id, input.customerId));
+      if (!c) throw new Error(`Unknown customer ${input.customerId}`);
+      customerId = c.id;
+    }
+    const creditAmount = customerId ? Math.max(total - input.paid, 0) : 0;
 
     const [sale] = await tx
       .insert(sales)
@@ -66,9 +77,11 @@ export async function recordSale(input: SaleInput, userId: number): Promise<numb
         cashSessionId: session.id,
         userId,
         total,
-        paid: Math.max(input.paid, total),
+        paid: customerId ? input.paid : Math.max(input.paid, total),
         change: Math.max(input.paid - total, 0),
-        createdAt: isNaN(createdAt.getTime()) ? new Date() : createdAt,
+        customerId,
+        creditAmount,
+        createdAt: saleDate,
       })
       .returning({ number: sales.number });
 
@@ -83,6 +96,16 @@ export async function recordSale(input: SaleInput, userId: number): Promise<numb
         lineTotal: l.lineTotal,
       })),
     );
+    if (customerId && creditAmount > 0) {
+      await tx.insert(creditEntries).values({
+        customerId,
+        type: "SALE",
+        amount: creditAmount,
+        saleId: input.id,
+        userId,
+        createdAt: saleDate,
+      });
+    }
     for (const l of lines) {
       await moveStock(tx, {
         productId: l.product.id,

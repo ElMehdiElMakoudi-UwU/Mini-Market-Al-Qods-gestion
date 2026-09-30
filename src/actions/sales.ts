@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { saleItems, sales } from "@/db/schema";
+import { creditEntries, saleItems, sales } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { audit } from "@/lib/audit";
 import { moveStock } from "@/lib/stock";
@@ -28,8 +28,19 @@ export async function voidSale(_prev: State, formData: FormData): Promise<State>
     for (const i of items) {
       await moveStock(tx, { productId: i.productId, delta: i.quantity, type: "VOID", userId: user.id, reference: `#${sale.number}`, note: reason });
     }
+    if (sale.customerId && sale.creditAmount > 0) {
+      await tx.insert(creditEntries).values({
+        customerId: sale.customerId,
+        type: "VOID",
+        amount: -sale.creditAmount,
+        saleId,
+        userId: user.id,
+        note: reason,
+      });
+    }
     await audit(user.id, "sale_void", { saleId, number: sale.number, total: sale.total, reason }, tx);
   });
   revalidatePath("/sales");
+  revalidatePath("/customers", "layout");
   return { ok: true };
 }

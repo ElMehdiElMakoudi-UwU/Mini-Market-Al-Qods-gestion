@@ -25,6 +25,7 @@ export const movementTypeEnum = pgEnum("movement_type", [
 ]);
 export const saleStatusEnum = pgEnum("sale_status", ["COMPLETED", "VOIDED"]);
 export const cashMovementTypeEnum = pgEnum("cash_movement_type", ["IN", "OUT"]);
+export const creditEntryTypeEnum = pgEnum("credit_entry_type", ["OPENING", "SALE", "PAYMENT", "ADJUSTMENT", "VOID"]);
 
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
@@ -120,6 +121,18 @@ export const cashMovements = pgTable("cash_movements", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+// Customers who buy on credit (the "karné").
+export const customers = pgTable("customers", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  phone: text("phone").notNull().default(""),
+  note: text("note").notNull().default(""),
+  // Maximum balance allowed, 0 = no limit.
+  creditLimit: integer("credit_limit").notNull().default(0),
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const sales = pgTable(
   "sales",
   {
@@ -133,6 +146,9 @@ export const sales = pgTable(
     total: integer("total").notNull(),
     paid: integer("paid").notNull(),
     change: integer("change").notNull(),
+    customerId: integer("customer_id").references(() => customers.id),
+    // Part of the total put on the customer's credit instead of paid in cash.
+    creditAmount: integer("credit_amount").notNull().default(0),
     status: saleStatusEnum("status").notNull().default("COMPLETED"),
     voidedById: integer("voided_by_id").references(() => users.id),
     voidReason: text("void_reason"),
@@ -174,6 +190,27 @@ export const stockMovements = pgTable(
   (t) => [index("stock_movements_product_idx").on(t.productId)],
 );
 
+// The customer's credit ledger. Entries are never edited or deleted; the
+// balance is the sum of amounts (positive = customer owes more).
+export const creditEntries = pgTable(
+  "credit_entries",
+  {
+    id: serial("id").primaryKey(),
+    customerId: integer("customer_id")
+      .notNull()
+      .references(() => customers.id),
+    type: creditEntryTypeEnum("type").notNull(),
+    amount: integer("amount").notNull(),
+    saleId: uuid("sale_id").references(() => sales.id),
+    // Set for cash payments so they count in that register's expected cash.
+    cashSessionId: integer("cash_session_id").references(() => cashSessions.id),
+    note: text("note").notNull().default(""),
+    userId: integer("user_id").references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("credit_entries_customer_idx").on(t.customerId)],
+);
+
 export const auditLogs = pgTable(
   "audit_logs",
   {
@@ -190,4 +227,5 @@ export type User = typeof users.$inferSelect;
 export type Product = typeof products.$inferSelect;
 export type Category = typeof categories.$inferSelect;
 export type Supplier = typeof suppliers.$inferSelect;
+export type Customer = typeof customers.$inferSelect;
 export type CashSession = typeof cashSessions.$inferSelect;

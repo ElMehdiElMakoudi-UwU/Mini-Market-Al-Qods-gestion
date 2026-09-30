@@ -4,13 +4,14 @@ import { db } from "@/db";
 import { categories, products } from "@/db/schema";
 import { getCurrentUser } from "@/lib/auth";
 import { getOpenCashSession } from "@/lib/cash";
+import { customersWithBalance } from "@/lib/credit";
 
 // Everything the POS needs to keep selling offline.
 export async function GET() {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-  const [productRows, categoryRows, session] = await Promise.all([
+  const [productRows, categoryRows, session, customerRows] = await Promise.all([
     db
       .select({
         id: products.id,
@@ -28,12 +29,16 @@ export async function GET() {
       .orderBy(asc(products.nameFr)),
     db.select().from(categories).orderBy(asc(categories.sortOrder), asc(categories.nameFr)),
     getOpenCashSession(),
+    customersWithBalance(),
   ]);
 
   return NextResponse.json({
     user: { id: user.id, name: user.name, role: user.role },
     products: productRows,
     categories: categoryRows,
+    customers: customerRows
+      .filter((c) => c.active)
+      .map((c) => ({ id: c.id, name: c.name, phone: c.phone, balance: c.balance, creditLimit: c.creditLimit })),
     cashSession: session ? { id: session.id, openedAt: session.openedAt, openedByName: session.openedByName } : null,
     fetchedAt: new Date().toISOString(),
   });
