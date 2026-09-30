@@ -64,3 +64,34 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(networkFirst(request));
   }
 });
+
+// Owner alerts (Web Push). The server sends { title, body, url, tag }.
+self.addEventListener("push", (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch {
+    data = { body: event.data ? event.data.text() : "" };
+  }
+  event.waitUntil(
+    self.registration.showNotification(data.title || "Al Qods", {
+      body: data.body || "",
+      tag: data.tag,
+      icon: "/pwa-icon/192",
+      badge: "/pwa-icon/192",
+      data: { url: data.url || "/dashboard" },
+    }),
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const url = new URL(event.notification.data?.url || "/dashboard", self.location.origin).href;
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((wins) => {
+      const win = wins.find((w) => new URL(w.url).origin === self.location.origin && "navigate" in w);
+      if (win) return win.focus().then(() => win.navigate(url));
+      return self.clients.openWindow(url);
+    }),
+  );
+});

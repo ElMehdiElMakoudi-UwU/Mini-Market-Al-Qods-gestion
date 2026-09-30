@@ -12,6 +12,7 @@ Point of sale, stock and cash management for **Mini Market Al Qods** (French / A
 - **Losses (`/losses`)**: expired, broken, stolen or damaged goods. Stock goes down and the loss is valued at purchase price; every loss appears in the owner's alerts.
 - **Expiry dates (`/expiry`)**: optional expiry date per delivery line, or added on a product for stock already on the shelf. What is left of each batch is estimated from stock (batches expiring first are assumed sold first). Lists expired products and those expiring within 7 and 30 days, with one-tap "declare as loss"; the dashboard warns when something needs attention.
 - **Owner dashboard (`/dashboard`)**: sales, profit, this month's net profit (after expenses and losses), cash in the drawer, low stock and alerts, viewable from a phone.
+- **Phone alerts (`/alerts`, owner)**: notifications on the owner's phone, even with the app closed: register opened or closed (with the counted amount and difference; a difference above a chosen amount is flagged), money taken from the drawer, expenses, supplier payments, deliveries, losses, a product falling to low stock, a karné going over its credit limit, and a summary every morning at 8:00 (yesterday's sales, expiry, low stock). Each alert can be turned off; the owner is never alerted about their own actions. The server checks for new events every minute.
 - **Accountability**: owner and manager accounts. Only the owner can change prices, correct stock or cancel sales, and every sensitive action is recorded in the activity log.
 
 Stack: Next.js 16, PostgreSQL, Drizzle ORM, Tailwind CSS.
@@ -42,6 +43,15 @@ After changing `src/db/schema.ts`, run `npm run db:generate` to create a new mig
 6. Enable Coolify's scheduled **database backups** on the Postgres resource.
 
 Then log in as the owner and create the manager account under **Utilisateurs**.
+
+### Phone alerts
+
+No setup on the server: the push keys are created automatically on first use and stored in the database (optionally set `VAPID_SUBJECT`, e.g. `mailto:you@example.com`). On the owner's phone, open **Alertes téléphone** and tap **Activer**:
+
+- **Android**: works in Chrome directly (installing the app to the home screen is recommended).
+- **iPhone** (iOS 16.4+): open the site in Safari, *Share* → **Add to Home Screen**, open the app from the home screen, then enable alerts there.
+
+Use **Envoyer une alerte de test** to check. If the phone is replaced or notifications are blocked, remove the old device from the list and enable again.
 
 ## Setting up the shop POS (Windows)
 

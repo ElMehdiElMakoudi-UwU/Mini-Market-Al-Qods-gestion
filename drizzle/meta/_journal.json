@@ -36,6 +36,13 @@
       "when": 1790778854027,
       "tag": "0004_expiry_dates",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1790780020718,
+      "tag": "0005_alerts",
+      "breakpoints": true
     }
   ]
 }

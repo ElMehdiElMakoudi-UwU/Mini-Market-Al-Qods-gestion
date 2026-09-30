@@ -5,7 +5,7 @@ import { cookies } from "next/headers";
 import { eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { db } from "@/db";
-import { users } from "@/db/schema";
+import { alertSettings, users } from "@/db/schema";
 import { createSession, destroySession, getCurrentUser } from "@/lib/auth";
 import { audit } from "@/lib/audit";
 
@@ -32,6 +32,9 @@ export async function setLanguage(locale: "fr" | "ar") {
     maxAge: 365 * 86400,
     sameSite: "lax",
   });
+  // Alerts follow the language the owner uses in the app.
+  const user = await getCurrentUser();
+  if (user) await db.update(alertSettings).set({ locale: locale === "ar" ? "ar" : "fr" }).where(eq(alertSettings.userId, user.id));
 }
 
 export async function whoAmI() {

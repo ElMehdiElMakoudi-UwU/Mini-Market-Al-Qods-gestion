@@ -12,6 +12,7 @@ import {
   index,
   date,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 // Money is stored as integer centimes (1 MAD = 100). Quantities are doubles
 // rounded to 3 decimals so products sold by weight (kg) are supported.
@@ -315,6 +316,36 @@ export const auditLogs = pgTable(
   },
   (t) => [index("audit_logs_created_at_idx").on(t.createdAt)],
 );
+
+// Phones and browsers that receive the owner's alerts (Web Push).
+export const pushSubscriptions = pgTable("push_subscriptions", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  endpoint: text("endpoint").notNull().unique(),
+  p256dh: text("p256dh").notNull(),
+  auth: text("auth").notNull(),
+  device: text("device").notNull().default(""),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// Which alerts each owner wants. Kinds are opt-out, so new kinds start enabled.
+export const alertSettings = pgTable("alert_settings", {
+  userId: integer("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  muted: text("muted").array().notNull().default(sql`'{login}'::text[]`),
+  // A cash closing with a difference at least this large is flagged.
+  cashThreshold: integer("cash_threshold").notNull().default(1000),
+  locale: text("locale").notNull().default("fr"),
+});
+
+// Small server-side values: push keys, how far the alert worker has read.
+export const appState = pgTable("app_state", {
+  key: text("key").primaryKey(),
+  value: jsonb("value").notNull(),
+});
 
 export type User = typeof users.$inferSelect;
 export type Product = typeof products.$inferSelect;

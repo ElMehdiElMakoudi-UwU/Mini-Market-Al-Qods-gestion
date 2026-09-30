@@ -28,6 +28,7 @@ export function AppNav({ user, roleLabel }: { user: { name: string; role: "OWNER
     { href: "/sales", label: t.nav.sales },
     { href: "/users", label: t.nav.users, ownerOnly: true },
     { href: "/activity", label: t.nav.activity, ownerOnly: true },
+    { href: "/alerts", label: t.nav.alerts, ownerOnly: true },
   ].filter((i) => !i.ownerOnly || user.role === "OWNER");
 
   return (
