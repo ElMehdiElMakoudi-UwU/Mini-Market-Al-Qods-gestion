@@ -283,6 +283,27 @@ export const losses = pgTable(
   (t) => [index("losses_created_at_idx").on(t.createdAt)],
 );
 
+// Expiry dates of received goods. How much of a batch is still on the shelf is
+// estimated from the product's stock (the latest-expiring batches are assumed
+// unsold), so sales never need to pick a batch.
+export const productBatches = pgTable(
+  "product_batches",
+  {
+    id: serial("id").primaryKey(),
+    productId: integer("product_id")
+      .notNull()
+      .references(() => products.id),
+    quantity: doublePrecision("quantity").notNull(),
+    expiryDate: date("expiry_date", { mode: "string" }).notNull(),
+    deliveryId: integer("delivery_id").references(() => deliveries.id),
+    // Set when someone confirms the batch is no longer on the shelf.
+    clearedAt: timestamp("cleared_at", { withTimezone: true }),
+    userId: integer("user_id").references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("product_batches_product_idx").on(t.productId)],
+);
+
 export const auditLogs = pgTable(
   "audit_logs",
   {

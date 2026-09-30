@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
-import { deliveries, deliveryItems, products, supplierEntries } from "@/db/schema";
+import { deliveries, deliveryItems, productBatches, products, supplierEntries } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { audit } from "@/lib/audit";
 import { getOpenCashSession } from "@/lib/cash";
@@ -24,6 +24,10 @@ const deliveryInput = z.object({
         productId: z.number().int(),
         quantity: z.number().positive(),
         unitCost: z.number().int().nonnegative(),
+        expiryDate: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/)
+          .nullish(),
       }),
     )
     .min(1),
@@ -59,6 +63,15 @@ export async function createDelivery(input: z.infer<typeof deliveryInput>): Prom
       });
       // The latest purchase price becomes the product's cost, used for margins.
       if (i.unitCost > 0) await tx.update(products).set({ costPrice: i.unitCost }).where(eq(products.id, i.productId));
+      if (i.expiryDate) {
+        await tx.insert(productBatches).values({
+          productId: i.productId,
+          quantity: roundQty(i.quantity),
+          expiryDate: i.expiryDate,
+          deliveryId: d.id,
+          userId: user.id,
+        });
+      }
     }
     if (supplierId) {
       await tx.insert(supplierEntries).values({ supplierId, type: "DELIVERY", amount: total, deliveryId: d.id, userId: user.id });
@@ -80,6 +93,7 @@ export async function createDelivery(input: z.infer<typeof deliveryInput>): Prom
   revalidatePath("/deliveries");
   revalidatePath("/suppliers", "layout");
   revalidatePath("/cash");
+  revalidatePath("/expiry");
   revalidatePath("/products");
   return { id };
 }

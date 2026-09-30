@@ -6,6 +6,7 @@ import { requireUser } from "@/lib/auth";
 import { cashSummary, getOpenCashSession } from "@/lib/cash";
 import { customersWithBalance } from "@/lib/credit";
 import { suppliersWithBalance } from "@/lib/supplier-debt";
+import { expiringBatches, SOON_DAYS } from "@/lib/expiry";
 import { getDict } from "@/i18n/server";
 import { formatDateTime, formatMoney, formatQty, formatTime, TIME_ZONE, todayInMorocco } from "@/lib/format";
 import { PageHeader } from "@/components/page-header";
@@ -111,6 +112,10 @@ export default async function DashboardPage() {
   const creditors = (await suppliersWithBalance()).filter((s) => s.balance > 0).sort((a, b) => b.balance - a.balance);
   const owedToSuppliers = creditors.reduce((s, c) => s + c.balance, 0);
 
+  const urgent = await expiringBatches(SOON_DAYS);
+  const expiredCount = urgent.filter((b) => b.daysLeft < 0).length;
+  const soonCount = urgent.length - expiredCount;
+
   const session = await getOpenCashSession();
   const cash = session ? await cashSummary(session.id, session.openingCash) : null;
   const lastSync = recentSales[0]?.s.syncedAt;
@@ -133,6 +138,26 @@ export default async function DashboardPage() {
         <Kpi label={t.dashboard.salesCount} value={String(today.count)} />
         <Kpi label={t.dashboard.avgBasket} value={m(today.count ? Math.round(today.revenue / today.count) : 0)} />
       </div>
+
+      {urgent.length > 0 && (
+        <Link
+          href="/expiry"
+          className={`card flex flex-wrap items-center gap-x-4 gap-y-1 p-4 hover:shadow-sm ${expiredCount > 0 ? "border-red-300 bg-red-50" : "border-amber-300 bg-amber-50"}`}
+        >
+          <span className="font-bold">⚠ {t.expiry.alert}</span>
+          {expiredCount > 0 && (
+            <span className="text-red-700">
+              <span className="num font-bold">{expiredCount}</span> {t.expiry.alertExpired}
+            </span>
+          )}
+          {soonCount > 0 && (
+            <span className="text-amber-800">
+              <span className="num font-bold">{soonCount}</span> {t.expiry.alertSoon}
+            </span>
+          )}
+          <span className="ms-auto text-sm font-semibold text-brand-700">{t.expiry.seeAll} →</span>
+        </Link>
+      )}
 
       <div className="card p-5">
         <h2 className="mb-3 font-bold">{t.dashboard.month}</h2>

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { deliveries, deliveryItems, products, supplierEntries, suppliers, users } from "@/db/schema";
+import { deliveries, deliveryItems, productBatches, products, supplierEntries, suppliers, users } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { getDict } from "@/i18n/server";
 import { formatDateTime, formatMoney, formatQty } from "@/lib/format";
@@ -26,6 +26,8 @@ export default async function DeliveryPage({ params }: PageProps<"/deliveries/[i
     .from(deliveryItems)
     .innerJoin(products, eq(products.id, deliveryItems.productId))
     .where(eq(deliveryItems.deliveryId, id));
+  const batches = await db.select().from(productBatches).where(eq(productBatches.deliveryId, id));
+  const expiryByProduct = new Map(batches.map((b) => [b.productId, b.expiryDate]));
   const [payment] = await db
     .select({ paid: sql<number>`coalesce(-sum(${supplierEntries.amount}), 0)::int` })
     .from(supplierEntries)
@@ -60,6 +62,7 @@ export default async function DeliveryPage({ params }: PageProps<"/deliveries/[i
               <th>{t.common.name}</th>
               <th>{t.common.quantity}</th>
               <th>{t.deliveries.unitCost}</th>
+              {batches.length > 0 && <th>{t.expiry.expiryDate}</th>}
               <th>{t.deliveries.lineTotal}</th>
             </tr>
           </thead>
@@ -69,11 +72,12 @@ export default async function DeliveryPage({ params }: PageProps<"/deliveries/[i
                 <td>{locale === "ar" && p.nameAr ? p.nameAr : p.nameFr}</td>
                 <td className="num">{formatQty(i.quantity, p.unit)}</td>
                 <td className="num">{formatMoney(i.unitCost, locale)}</td>
+                {batches.length > 0 && <td className="num">{expiryByProduct.get(p.id)?.split("-").reverse().join("/") ?? "—"}</td>}
                 <td className="num font-semibold">{formatMoney(Math.round(i.unitCost * i.quantity), locale)}</td>
               </tr>
             ))}
             <tr>
-              <td colSpan={3} className="text-end font-bold">{t.common.total}</td>
+              <td colSpan={batches.length > 0 ? 4 : 3} className="text-end font-bold">{t.common.total}</td>
               <td className="num font-bold">{formatMoney(d.total, locale)}</td>
             </tr>
           </tbody>

@@ -10,6 +10,7 @@ Point of sale, stock and cash management for **Mini Market Al Qods** (French / A
 - **Supplier debts (`/suppliers`)**: what you owe each supplier. When recording a delivery, enter what was paid now (from the drawer, or outside it for the owner); the rest becomes a debt. Pay suppliers later from their page; payments from the drawer count in the closing. Opening debts and corrections are owner only.
 - **Expenses (`/expenses`)**: rent, electricity, salaries… by category and month, paid from the drawer (counted in the closing) or outside it (owner only).
 - **Losses (`/losses`)**: expired, broken, stolen or damaged goods. Stock goes down and the loss is valued at purchase price; every loss appears in the owner's alerts.
+- **Expiry dates (`/expiry`)**: optional expiry date per delivery line, or added on a product for stock already on the shelf. What is left of each batch is estimated from stock (batches expiring first are assumed sold first). Lists expired products and those expiring within 7 and 30 days, with one-tap "declare as loss"; the dashboard warns when something needs attention.
 - **Owner dashboard (`/dashboard`)**: sales, profit, this month's net profit (after expenses and losses), cash in the drawer, low stock and alerts, viewable from a phone.
 - **Accountability**: owner and manager accounts. Only the owner can change prices, correct stock or cancel sales, and every sensitive action is recorded in the activity log.
 

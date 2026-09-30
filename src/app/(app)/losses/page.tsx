@@ -11,7 +11,13 @@ import { LossForm } from "./loss-form";
 export default async function LossesPage({ searchParams }: PageProps<"/losses">) {
   await requireUser();
   const { t, locale } = await getDict();
-  const month = monthParam((await searchParams).month);
+  const sp = await searchParams;
+  const month = monthParam(sp.month);
+  const initial = {
+    productId: Number(sp.product) || undefined,
+    quantity: typeof sp.quantity === "string" && /^\d+(\.\d+)?$/.test(sp.quantity) ? sp.quantity : undefined,
+    reason: typeof sp.reason === "string" ? sp.reason : undefined,
+  };
 
   const [productRows, rows] = await Promise.all([
     db
@@ -49,7 +55,7 @@ export default async function LossesPage({ searchParams }: PageProps<"/losses">)
       <div className="card p-5">
         <h2 className="mb-1 font-bold">{t.losses.new}</h2>
         <p className="mb-4 text-sm text-muted">{t.losses.help}</p>
-        <LossForm products={productRows} />
+        <LossForm products={productRows} initial={initial} />
       </div>
 
       <form className="card flex flex-wrap items-end gap-3 p-3">

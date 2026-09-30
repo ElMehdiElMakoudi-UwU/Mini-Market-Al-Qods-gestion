@@ -9,7 +9,7 @@ import { centsToInput, formatMoney, toCents } from "@/lib/format";
 import { FormError } from "@/components/form-error";
 
 type P = { id: number; nameFr: string; nameAr: string; barcode: string | null; unit: "PIECE" | "KG"; costPrice: number };
-type Line = { productId: number; quantity: string; unitCost: string };
+type Line = { productId: number; quantity: string; unitCost: string; expiryDate?: string };
 type Draft = { supplierId: string; reference: string; note: string; lines: Line[]; paid: string; fromCash: boolean };
 
 // The draft survives a detour to create a missing product.
@@ -111,7 +111,12 @@ export function DeliveryForm({
   const submit = async () => {
     const items = draft.lines
       .filter((l) => byId.has(l.productId))
-      .map((l) => ({ productId: l.productId, quantity: parseFloat(l.quantity.replace(",", ".")), unitCost: toCents(l.unitCost || "0") }));
+      .map((l) => ({
+        productId: l.productId,
+        quantity: parseFloat(l.quantity.replace(",", ".")),
+        unitCost: toCents(l.unitCost || "0"),
+        expiryDate: l.expiryDate || null,
+      }));
     if (items.length === 0 || items.some((i) => !(i.quantity > 0) || !Number.isFinite(i.unitCost))) {
       setError(items.length === 0 ? "emptyItems" : "amount");
       return;
@@ -211,6 +216,9 @@ export function DeliveryForm({
                   <th>{t.common.name}</th>
                   <th>{t.common.quantity}</th>
                   <th>{t.deliveries.unitCost}</th>
+                  <th>
+                    {t.expiry.expiryDate} <span className="font-normal normal-case">{t.expiry.optional}</span>
+                  </th>
                   <th>{t.deliveries.lineTotal}</th>
                   <th />
                 </tr>
@@ -237,6 +245,14 @@ export function DeliveryForm({
                           inputMode="decimal"
                           value={l.unitCost}
                           onChange={(e) => updateLine(i, { unitCost: e.target.value })}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="date"
+                          className="input w-40"
+                          value={l.expiryDate ?? ""}
+                          onChange={(e) => updateLine(i, { expiryDate: e.target.value })}
                         />
                       </td>
                       <td className="num whitespace-nowrap font-semibold">

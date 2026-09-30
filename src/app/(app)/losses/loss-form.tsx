@@ -14,10 +14,17 @@ function normalize(s: string) {
   return s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 }
 
-export function LossForm({ products }: { products: P[] }) {
+export function LossForm({
+  products,
+  initial,
+}: {
+  products: P[];
+  // Prefilled from the expiry page's "declare as loss" link.
+  initial?: { productId?: number; quantity?: string; reason?: string };
+}) {
   const { t, locale } = useI18n();
   const [state, action, pending] = useActionState(recordLoss, undefined);
-  const [product, setProduct] = useState<P | null>(null);
+  const [product, setProduct] = useState<P | null>(() => products.find((p) => p.id === initial?.productId) ?? null);
   const [search, setSearch] = useState("");
   const [notFound, setNotFound] = useState(false);
   const ref = useRef<HTMLFormElement>(null);
@@ -98,7 +105,7 @@ export function LossForm({ products }: { products: P[] }) {
           <label className="label">
             {t.common.quantity} * {product?.unit === "KG" && <span className="text-muted">(kg)</span>}
           </label>
-          <input name="quantity" inputMode="decimal" className="num input" defaultValue="1" required />
+          <input name="quantity" inputMode="decimal" className="num input" defaultValue={initial?.quantity ?? "1"} required />
         </div>
         <div>
           <label className="label">{t.common.note}</label>
@@ -114,7 +121,7 @@ export function LossForm({ products }: { products: P[] }) {
               key={r}
               className="flex items-center gap-2 rounded-lg border border-line p-2 text-sm has-checked:border-red-500 has-checked:bg-red-50"
             >
-              <input type="radio" name="reason" value={r} required /> {t.lossReasons[r]}
+              <input type="radio" name="reason" value={r} required defaultChecked={initial?.reason === r} /> {t.lossReasons[r]}
             </label>
           ))}
         </div>
