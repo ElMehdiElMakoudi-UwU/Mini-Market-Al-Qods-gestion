@@ -10,6 +10,7 @@ import {
   doublePrecision,
   jsonb,
   index,
+  date,
 } from "drizzle-orm/pg-core";
 
 // Money is stored as integer centimes (1 MAD = 100). Quantities are doubles
@@ -22,10 +23,24 @@ export const movementTypeEnum = pgEnum("movement_type", [
   "DELIVERY",
   "ADJUSTMENT",
   "VOID",
+  "LOSS",
 ]);
 export const saleStatusEnum = pgEnum("sale_status", ["COMPLETED", "VOIDED"]);
 export const cashMovementTypeEnum = pgEnum("cash_movement_type", ["IN", "OUT"]);
 export const supplierEntryTypeEnum = pgEnum("supplier_entry_type", ["OPENING", "DELIVERY", "PAYMENT", "ADJUSTMENT"]);
+export const expenseCategoryEnum = pgEnum("expense_category", [
+  "RENT",
+  "ELECTRICITY",
+  "WATER",
+  "SALARY",
+  "PHONE_INTERNET",
+  "TRANSPORT",
+  "SUPPLIES",
+  "MAINTENANCE",
+  "TAXES",
+  "OTHER",
+]);
+export const lossReasonEnum = pgEnum("loss_reason", ["EXPIRED", "BROKEN", "STOLEN", "DAMAGED", "OTHER"]);
 export const creditEntryTypeEnum = pgEnum("credit_entry_type", ["OPENING", "SALE", "PAYMENT", "ADJUSTMENT", "VOID"]);
 
 export const users = pgTable("users", {
@@ -231,6 +246,41 @@ export const supplierEntries = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("supplier_entries_supplier_idx").on(t.supplierId)],
+);
+
+export const expenses = pgTable(
+  "expenses",
+  {
+    id: serial("id").primaryKey(),
+    category: expenseCategoryEnum("category").notNull(),
+    amount: integer("amount").notNull(),
+    note: text("note").notNull().default(""),
+    // The day the expense belongs to (e.g. the month's rent), in Morocco time.
+    date: date("date", { mode: "string" }).notNull(),
+    // Set when paid from the drawer: it lowers that register's expected cash.
+    cashSessionId: integer("cash_session_id").references(() => cashSessions.id),
+    userId: integer("user_id").notNull().references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("expenses_date_idx").on(t.date)],
+);
+
+// Goods thrown away or missing. Valued at the purchase price at the time.
+export const losses = pgTable(
+  "losses",
+  {
+    id: serial("id").primaryKey(),
+    productId: integer("product_id")
+      .notNull()
+      .references(() => products.id),
+    quantity: doublePrecision("quantity").notNull(),
+    unitCost: integer("unit_cost").notNull(),
+    reason: lossReasonEnum("reason").notNull(),
+    note: text("note").notNull().default(""),
+    userId: integer("user_id").notNull().references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("losses_created_at_idx").on(t.createdAt)],
 );
 
 export const auditLogs = pgTable(

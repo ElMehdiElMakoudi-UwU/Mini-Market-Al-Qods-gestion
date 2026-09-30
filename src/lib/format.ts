@@ -2,6 +2,16 @@
 
 export const TIME_ZONE = "Africa/Casablanca";
 
+/** Today's date in Morocco as YYYY-MM-DD. */
+export function todayInMorocco(): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: TIME_ZONE }).format(new Date());
+}
+
+/** A YYYY-MM month from a search param, or the current month in Morocco. */
+export function monthParam(value: unknown): string {
+  return typeof value === "string" && /^\d{4}-(0[1-9]|1[0-2])$/.test(value) ? value : todayInMorocco().slice(0, 7);
+}
+
 /** Parses a user-typed amount in MAD ("12,5" or "12.50") into centimes. */
 export function toCents(value: string | number): number {
   const n = typeof value === "number" ? value : parseFloat(value.replace(",", ".").trim());

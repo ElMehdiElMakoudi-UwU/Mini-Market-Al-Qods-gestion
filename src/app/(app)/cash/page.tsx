@@ -60,6 +60,7 @@ export default async function CashPage() {
               <Stat label={t.cash.cashIn} value={m(summary.cashIn)} />
               <Stat label={t.cash.cashOut} value={m(summary.cashOut)} />
               <Stat label={t.cash.supplierPayments} value={m(summary.supplierPayments)} />
+              <Stat label={t.cash.expenses} value={m(summary.expenses)} />
               <Stat label={t.cash.expected} value={m(summary.expected)} strong />
             </dl>
             {summary.creditSales > 0 && (

@@ -35,7 +35,7 @@ export default async function ActivityPage() {
                 <td className="num whitespace-nowrap">{formatDateTime(a.createdAt, locale)}</td>
                 <td>{userName}</td>
                 <td className="font-medium">{t.auditActions[a.action] ?? a.action}</td>
-                <td className="text-muted">{describeAudit(a.details as Record<string, unknown>, locale)}</td>
+                <td className="text-muted">{describeAudit(a.details as Record<string, unknown>, locale, { ...t.expenseCategories, ...t.lossReasons })}</td>
               </tr>
             ))}
           </tbody>

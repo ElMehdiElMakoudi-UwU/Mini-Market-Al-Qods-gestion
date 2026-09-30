@@ -4,13 +4,9 @@ import { db } from "@/db";
 import { customers, products, saleItems, sales, users } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { getDict } from "@/i18n/server";
-import { formatDateTime, formatMoney, formatQty, TIME_ZONE } from "@/lib/format";
+import { formatDateTime, formatMoney, formatQty, TIME_ZONE, todayInMorocco } from "@/lib/format";
 import { PageHeader } from "@/components/page-header";
 import { VoidSaleButton } from "./void-sale-button";
-
-function todayInMorocco() {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: TIME_ZONE }).format(new Date());
-}
 
 export default async function SalesPage({ searchParams }: PageProps<"/sales">) {
   const user = await requireUser();

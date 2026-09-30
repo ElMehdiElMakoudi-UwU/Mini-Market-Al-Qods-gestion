@@ -1,18 +1,18 @@
 import Link from "next/link";
 import { and, desc, eq, inArray, isNotNull, lte, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { auditLogs, cashSessions, creditEntries, products, saleItems, sales, users } from "@/db/schema";
+import { auditLogs, cashSessions, creditEntries, expenses, losses, products, saleItems, sales, users } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { cashSummary, getOpenCashSession } from "@/lib/cash";
 import { customersWithBalance } from "@/lib/credit";
 import { suppliersWithBalance } from "@/lib/supplier-debt";
 import { getDict } from "@/i18n/server";
-import { formatDateTime, formatMoney, formatQty, formatTime, TIME_ZONE } from "@/lib/format";
+import { formatDateTime, formatMoney, formatQty, formatTime, TIME_ZONE, todayInMorocco } from "@/lib/format";
 import { PageHeader } from "@/components/page-header";
 import { AutoRefresh } from "@/components/auto-refresh";
 import { describeAudit } from "@/lib/audit-describe";
 
-const ALERT_ACTIONS = ["sale_void", "price_change", "stock_adjust", "cash_close", "cash_movement", "credit_adjust", "supplier_payment", "supplier_adjust"];
+const ALERT_ACTIONS = ["sale_void", "price_change", "stock_adjust", "cash_close", "cash_movement", "credit_adjust", "supplier_payment", "supplier_adjust", "expense_create", "expense_delete", "loss_create"];
 
 export default async function DashboardPage() {
   await requireUser("OWNER");
@@ -32,6 +32,26 @@ export default async function DashboardPage() {
     .from(saleItems)
     .innerJoin(sales, eq(sales.id, saleItems.saleId))
     .where(and(isToday, completed));
+
+  const month = todayInMorocco().slice(0, 7);
+  const saleInMonth = sql`to_char(${sales.createdAt} at time zone ${TIME_ZONE}, 'YYYY-MM') = ${month}`;
+  const [monthSales] = await db
+    .select({
+      revenue: sql<number>`coalesce(sum(${saleItems.lineTotal}), 0)::int`,
+      profit: sql<number>`coalesce(sum(${saleItems.lineTotal} - round(${saleItems.unitCost} * ${saleItems.quantity})), 0)::int`,
+    })
+    .from(saleItems)
+    .innerJoin(sales, eq(sales.id, saleItems.saleId))
+    .where(and(saleInMonth, completed));
+  const [monthExpenses] = await db
+    .select({ total: sql<number>`coalesce(sum(${expenses.amount}), 0)::int` })
+    .from(expenses)
+    .where(sql`to_char(${expenses.date}, 'YYYY-MM') = ${month}`);
+  const [monthLosses] = await db
+    .select({ total: sql<number>`coalesce(sum(round(${losses.unitCost} * ${losses.quantity})), 0)::int` })
+    .from(losses)
+    .where(sql`to_char(${losses.createdAt} at time zone ${TIME_ZONE}, 'YYYY-MM') = ${month}`);
+  const netProfit = monthSales.profit - monthExpenses.total - monthLosses.total;
 
   const last7 = await db.execute<{ day: string; revenue: number }>(sql`
     select to_char(d.day, 'YYYY-MM-DD') as day, coalesce(sum(s.total), 0)::int as revenue
@@ -114,6 +134,20 @@ export default async function DashboardPage() {
         <Kpi label={t.dashboard.avgBasket} value={m(today.count ? Math.round(today.revenue / today.count) : 0)} />
       </div>
 
+      <div className="card p-5">
+        <h2 className="mb-3 font-bold">{t.dashboard.month}</h2>
+        <div className="grid grid-cols-2 gap-3 text-sm xl:grid-cols-5">
+          <MonthFigure label={t.dashboard.monthSales} value={m(monthSales.revenue)} />
+          <MonthFigure label={t.dashboard.monthGrossProfit} value={m(monthSales.profit)} />
+          <MonthFigure label={t.dashboard.monthExpenses} value={`− ${m(monthExpenses.total)}`} href="/expenses" />
+          <MonthFigure label={t.dashboard.monthLosses} value={`− ${m(monthLosses.total)}`} href="/losses" />
+          <div className={`col-span-2 rounded-lg p-3 xl:col-span-1 ${netProfit >= 0 ? "bg-brand-50" : "bg-red-50"}`}>
+            <div className="text-xs text-muted">{t.dashboard.netProfit}</div>
+            <div className={`num mt-1 text-xl font-bold ${netProfit >= 0 ? "text-brand-700" : "text-red-600"}`}>{m(netProfit)}</div>
+          </div>
+        </div>
+      </div>
+
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="card p-5">
           <h2 className="mb-3 font-bold">{t.nav.cash}</h2>
@@ -131,6 +165,7 @@ export default async function DashboardPage() {
                 <Row label={t.cash.cashIn} value={m(cash.cashIn)} />
                 <Row label={t.cash.cashOut} value={m(cash.cashOut)} />
                 <Row label={t.cash.supplierPayments} value={m(cash.supplierPayments)} />
+                <Row label={t.cash.expenses} value={m(cash.expenses)} />
               </dl>
             </>
           ) : (
@@ -293,7 +328,7 @@ export default async function DashboardPage() {
               <li key={a.id} className="flex flex-wrap justify-between gap-2 py-2">
                 <span>
                   <span className="font-semibold">{t.auditActions[a.action] ?? a.action}</span> — {userName}{" "}
-                  <span className="text-muted">{describeAudit(a.details as Record<string, unknown>, locale)}</span>
+                  <span className="text-muted">{describeAudit(a.details as Record<string, unknown>, locale, { ...t.expenseCategories, ...t.lossReasons })}</span>
                 </span>
                 <span className="num text-muted">{formatDateTime(a.createdAt, locale)}</span>
               </li>
@@ -311,6 +346,20 @@ function Kpi({ label, value, accent }: { label: string; value: string; accent?: 
       <div className="text-sm text-muted">{label}</div>
       <div className={`num mt-1 text-2xl font-bold ${accent ? "text-brand-700" : ""}`}>{value}</div>
     </div>
+  );
+}
+
+function MonthFigure({ label, value, href }: { label: string; value: string; href?: string }) {
+  const body = (
+    <>
+      <div className="text-xs text-muted">{label}</div>
+      <div className="num mt-1 font-semibold">{value}</div>
+    </>
+  );
+  return href ? (
+    <Link href={href} className="rounded-lg bg-surface p-3 hover:bg-brand-50">{body}</Link>
+  ) : (
+    <div className="rounded-lg bg-surface p-3">{body}</div>
   );
 }
 

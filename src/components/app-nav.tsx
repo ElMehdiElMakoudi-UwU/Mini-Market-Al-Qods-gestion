@@ -22,6 +22,8 @@ export function AppNav({ user, roleLabel }: { user: { name: string; role: "OWNER
     { href: "/products", label: t.nav.products },
     { href: "/deliveries", label: t.nav.deliveries },
     { href: "/suppliers", label: t.nav.suppliers },
+    { href: "/expenses", label: t.nav.expenses },
+    { href: "/losses", label: t.nav.losses },
     { href: "/sales", label: t.nav.sales },
     { href: "/users", label: t.nav.users, ownerOnly: true },
     { href: "/activity", label: t.nav.activity, ownerOnly: true },

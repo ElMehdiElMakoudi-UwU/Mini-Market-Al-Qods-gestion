@@ -10,7 +10,7 @@ export async function moveStock(
   opts: {
     productId: number;
     delta: number;
-    type: "SALE" | "DELIVERY" | "ADJUSTMENT" | "VOID";
+    type: "SALE" | "DELIVERY" | "ADJUSTMENT" | "VOID" | "LOSS";
     userId: number | null;
     reference?: string;
     note?: string;

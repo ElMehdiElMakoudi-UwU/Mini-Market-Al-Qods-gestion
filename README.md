@@ -8,7 +8,9 @@ Point of sale, stock and cash management for **Mini Market Al Qods** (French / A
 - **Products and stock**: products, categories, stock history, low-stock alerts, stock corrections (owner only).
 - **Deliveries**: record incoming goods by scanning; stock and purchase prices update automatically.
 - **Supplier debts (`/suppliers`)**: what you owe each supplier. When recording a delivery, enter what was paid now (from the drawer, or outside it for the owner); the rest becomes a debt. Pay suppliers later from their page; payments from the drawer count in the closing. Opening debts and corrections are owner only.
-- **Owner dashboard (`/dashboard`)**: sales, profit, cash in the drawer, low stock and alerts, viewable from a phone.
+- **Expenses (`/expenses`)**: rent, electricity, salaries… by category and month, paid from the drawer (counted in the closing) or outside it (owner only).
+- **Losses (`/losses`)**: expired, broken, stolen or damaged goods. Stock goes down and the loss is valued at purchase price; every loss appears in the owner's alerts.
+- **Owner dashboard (`/dashboard`)**: sales, profit, this month's net profit (after expenses and losses), cash in the drawer, low stock and alerts, viewable from a phone.
 - **Accountability**: owner and manager accounts. Only the owner can change prices, correct stock or cancel sales, and every sensitive action is recorded in the activity log.
 
 Stack: Next.js 16, PostgreSQL, Drizzle ORM, Tailwind CSS.
