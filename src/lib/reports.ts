@@ -261,6 +261,7 @@ export const CONTROL_ACTIONS = [
   "supplier_adjust",
   "expense_delete",
   "batch_clear",
+  "stock_count_approve",
 ];
 
 export async function controlEvents(p: Period) {

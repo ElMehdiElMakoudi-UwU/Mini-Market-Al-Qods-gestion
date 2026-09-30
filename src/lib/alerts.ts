@@ -19,6 +19,7 @@ export const ALERT_KINDS = [
   "supplier_payment",
   "delivery",
   "loss",
+  "stock_count",
   "low_stock",
   "credit_limit",
   "daily",
@@ -36,6 +37,7 @@ const ACTION_KIND: Record<string, AlertKind> = {
   supplier_payment: "supplier_payment",
   delivery_create: "delivery",
   loss_create: "loss",
+  stock_count_submit: "stock_count",
   login: "login",
 };
 
@@ -128,6 +130,7 @@ async function activityAlerts(): Promise<Alert[]> {
       : kind === "supplier_payment" ? `/suppliers/${d.supplierId}`
       : kind === "delivery" ? `/deliveries/${d.deliveryId}`
       : kind === "login" ? "/activity"
+      : kind === "stock_count" ? `/stock-counts/${d.countId}`
       : "/cash";
     alerts.push({
       kind,

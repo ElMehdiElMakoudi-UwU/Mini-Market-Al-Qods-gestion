@@ -11,6 +11,7 @@ import {
   jsonb,
   index,
   date,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
@@ -25,7 +26,9 @@ export const movementTypeEnum = pgEnum("movement_type", [
   "ADJUSTMENT",
   "VOID",
   "LOSS",
+  "COUNT",
 ]);
+export const stockCountStatusEnum = pgEnum("stock_count_status", ["IN_PROGRESS", "SUBMITTED", "APPROVED", "CANCELLED"]);
 export const saleStatusEnum = pgEnum("sale_status", ["COMPLETED", "VOIDED"]);
 export const cashMovementTypeEnum = pgEnum("cash_movement_type", ["IN", "OUT"]);
 export const supplierEntryTypeEnum = pgEnum("supplier_entry_type", ["OPENING", "DELIVERY", "PAYMENT", "ADJUSTMENT"]);
@@ -315,6 +318,45 @@ export const auditLogs = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("audit_logs_created_at_idx").on(t.createdAt)],
+);
+
+// Physical stock counts (inventaire). Counting is blind for managers; the
+// owner reviews the differences before stock is corrected.
+export const stockCounts = pgTable("stock_counts", {
+  id: serial("id").primaryKey(),
+  status: stockCountStatusEnum("status").notNull().default("IN_PROGRESS"),
+  // Null = every active product.
+  categoryId: integer("category_id").references(() => categories.id, { onDelete: "set null" }),
+  note: text("note").notNull().default(""),
+  startedById: integer("started_by_id").notNull().references(() => users.id),
+  startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+  submittedById: integer("submitted_by_id").references(() => users.id),
+  submittedAt: timestamp("submitted_at", { withTimezone: true }),
+  closedById: integer("closed_by_id").references(() => users.id),
+  closedAt: timestamp("closed_at", { withTimezone: true }),
+});
+
+export const stockCountLines = pgTable(
+  "stock_count_lines",
+  {
+    id: serial("id").primaryKey(),
+    countId: integer("count_id")
+      .notNull()
+      .references(() => stockCounts.id, { onDelete: "cascade" }),
+    productId: integer("product_id")
+      .notNull()
+      .references(() => products.id),
+    counted: doublePrecision("counted").notNull(),
+    // System stock when the product was counted: sales made afterwards
+    // don't count as a difference.
+    expected: doublePrecision("expected").notNull(),
+    unitCost: integer("unit_cost").notNull(),
+    // Set when the count is approved: the correction actually applied.
+    applied: doublePrecision("applied"),
+    userId: integer("user_id").notNull().references(() => users.id),
+    countedAt: timestamp("counted_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("stock_count_lines_count_product_idx").on(t.countId, t.productId)],
 );
 
 // Phones and browsers that receive the owner's alerts (Web Push).
