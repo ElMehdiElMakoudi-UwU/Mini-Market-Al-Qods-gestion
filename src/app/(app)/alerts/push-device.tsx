@@ -12,8 +12,10 @@ function urlBase64ToUint8Array(base64: string) {
   return Uint8Array.from(atob(padded), (c) => c.charCodeAt(0));
 }
 
+// Same worker as the offline POS, which only runs in production builds.
+const workerEnabled = process.env.NODE_ENV === "production";
+
 async function registration() {
-  // Same worker as the offline POS; registering again is harmless.
   await navigator.serviceWorker.register("/sw.js");
   return navigator.serviceWorker.ready;
 }
@@ -29,7 +31,7 @@ export function PushDevice({ publicKey }: { publicKey: string }) {
     (async () => {
       const ios = /iPhone|iPad/.test(navigator.userAgent);
       const standalone = window.matchMedia("(display-mode: standalone)").matches;
-      if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
+      if (!workerEnabled || !("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
         // iPhone only allows notifications for sites added to the home screen.
         setStatus(ios && !standalone ? "ios-install" : "unsupported");
         return;
